@@ -32,13 +32,20 @@ FOREIGN KEY (id_jogador) REFERENCES jogadores(id)
 )
 """)
 
-opcoes = """=== Lanheses DB ===
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS epocas(
+id INTEGER PRIMARY KEY,
+nome TEXT)
+""")
 
+opcoes = """
 1. Ver jogadores
 2. Adicionar jogador
 3. Remover jogador
 4. Editar jogador
-5. Sair
+5. Gerir épocas
+6. Trocar época
+7. Sair
 """
 #===============================================================================================================================================================================================================================================
 # === VARIAVEIS GLOBAIS ===
@@ -132,8 +139,10 @@ def adicionar_jogador():
         return
     while True:
         try:
-            numero = int(input("Número: "))
-            if numero not in range(1,100):
+            numero = int(input("Número (0 para cancelar): "))
+            if numero == 0:
+                return
+            elif numero not in range(1,100):
                 print("Escolha um número de 1 a 99")
             else:    
                 break
@@ -142,10 +151,12 @@ def adicionar_jogador():
 
     print("Posição principal: ")
     for num, posicao in enumerate(lista_pos, start=1):
-        print(num, posicao)
+        print(num,".", posicao)
     while True:
         try:
-            pos_escolhida = int(input("Escolha: "))
+            pos_escolhida = int(input("Escolha (0 para cancelar): "))
+            if pos_escolhida == 0:
+                return
             if pos_escolhida not in range(1,len(lista_pos)+1):
                 print("Escolha uma posição válida")
             else: 
@@ -157,12 +168,14 @@ def adicionar_jogador():
         try:
             posicoes_secundarias = [] #criamos a lista vazia primeiro
             entrada_valida = True #flag para saber se podemos sair do while ou nao
-            texto = input("Escolha as posições secundárias: ")
+            texto = input("Escolha as posições secundárias (0 para cancelar): ")
             if texto == "": # caso o user nao selecione nenhuma pos sec, fazemos break e saimos do while
                 break
             escolhas = texto.split(",")
             for e in escolhas:
                 e = int(e)
+                if e == 0:
+                    return
                 if e not in range(1,len(lista_pos)+1):
                     print("Escolha números válidos")
                     entrada_valida = False
@@ -176,7 +189,9 @@ def adicionar_jogador():
             break
     while True:
         try:
-            data_nascimento = input("Data de nascimento (DD/MM/AAAA): ")
+            data_nascimento = input("Data de nascimento (DD/MM/AAAA) ou 0 para cancelar: ")
+            if data_nascimento == "0":
+                return
             data_nascimento = datetime.strptime(data_nascimento, "%d/%m/%Y")
             break
         except ValueError:
@@ -184,16 +199,18 @@ def adicionar_jogador():
 
     print("Nacionalidades:")
     for num, nacionalidade in enumerate(lista_nacionalidades, start=1):
-        print(num, nacionalidade)
+        print(num,".", nacionalidade)
     while True:
         try:
             nacionalidades_escolhidas= []
             entrada_valida = True
-            texto = input("Escolha os números correspondentes às nacionalidades: ")
+            texto = input("Escolha os números correspondentes às nacionalidades (0 para cancelar): ")
             escolhas_nac = texto.split(",")
 
             for n in escolhas_nac:
                 n = int(n)
+                if n == 0:
+                    return
                 if n not in range(1,len(lista_nacionalidades)+1):
                     entrada_valida = False
                     break #para sairmos do for
@@ -208,10 +225,12 @@ def adicionar_jogador():
             break
     print("Pé dominante: ")
     for (num,p) in enumerate(lista_pes, start=1):
-        print(num,p)
+        print(num,".",p)
     while True:
         try:
-            pe_dominante = int(input("Escolha o número correspondente ao pé dominante: "))
+            pe_dominante = int(input("Escolha o número correspondente ao pé dominante (0 para cancelar): "))
+            if pe_dominante == 0:
+                return
             if pe_dominante in range(1,len(lista_pes)+1):
                 pe_dominante = lista_pes[pe_dominante-1]
                 break
@@ -317,6 +336,7 @@ def editar_jogador():
     #pedimos o id
     #validamos o id
     #mostrar atribs e validar escolha
+    alteracoes = {} #dicionario para guardar quais atributos foram alterados e quais sao os novos valores
     print("\n")
     print("=== Editar Jogador ===")
     ver_jogadores(pausa=False)
@@ -362,7 +382,7 @@ def editar_jogador():
             5. Pé dominante
             6. Posições Secundárias
             7. Nacionalidades
-            0. Terminar
+            0. Guardar alterações e sair
             """
         print(atributos)
         while True:
@@ -377,6 +397,45 @@ def editar_jogador():
                 print("Escolha um número válido")
         
         if atrib_escolhido == 0:
+            #vai fazer todas os updates necessarios de acordo com oq esta no dicionario
+            for coluna, valor in alteracoes.items(): #percorremos os itens do dicionario
+                if coluna == "posicoes_sec":
+                    #eliminar as posicoes secundarias que tinhamos na bd para o jogador a editar
+                    cursor.execute("""
+                    DELETE 
+                    FROM posicoes_sec
+                    WHERE id_jogador = ?
+                    """,(jogador_editar,))
+
+                    #adicionar as posicoes secundarias novas
+                    for v in valor:
+                        cursor.execute("""
+                        INSERT INTO posicoes_sec(id_jogador,posicao_sec)
+                        VALUES(?,?)
+                        """, (jogador_editar,v))
+                elif coluna == "nacionalidades":
+                    cursor.execute("""
+                    DELETE
+                    FROM nacionalidades
+                    WHERE id_jogador = ?
+                    """, (jogador_editar,))
+    
+                    #adicionar novas nacionalidades
+                    for nac in valor:
+                        cursor.execute("""
+                        INSERT INTO nacionalidades(id_jogador,nacionalidade)
+                        VALUES(?,?)
+                        """,(jogador_editar,nac))
+                
+                else:       
+                    cursor.execute(f"""
+                    UPDATE jogadores
+                    SET {coluna} = ?
+                    WHERE id = ?
+                    """, (valor, jogador_editar))
+
+            bd_lanheses.commit()
+            
             return
         
         if atrib_escolhido == 1:
@@ -418,7 +477,7 @@ def editar_jogador():
 
             #este for pega na lista e apresenta as pos sec de forma enumerada
             for num,pos in enumerate(nomes_posicoes,start=1):
-                print(num, pos)
+                print(num,".", pos)
 
             print("\n")
             print(20*"-")
@@ -427,7 +486,7 @@ def editar_jogador():
 
             #este for mostra ao user as opcoes de posicoes
             for num,pos in enumerate(lista_pos, start=1):
-                print(num,pos)
+                print(num,".",pos)
 
             #pedir ao user as novas posicoes sec e colocar na lista novas_pos_sec
             #e tambem verificar se o user selecionou pos sec ou nao
@@ -437,7 +496,9 @@ def editar_jogador():
                     print("\n")
                     novas_pos_sec_texto = input("Posições secundárias novas: ")
                     print("\n")
-                    
+
+                    if novas_pos_sec_texto == "0":
+                        break
                     if novas_pos_sec_texto == "":
                         novas_pos_sec = []
                     else:
@@ -460,26 +521,12 @@ def editar_jogador():
                     if entrada_valida:
                         for k in novas_pos_sec_int:
                             novas_pos_final.append(lista_pos[k-1])
+
+                        alteracoes["posicoes_sec"] = novas_pos_final
                         break
                 except ValueError:
                     print("Escolha números válidos")
 
-            #eliminar as posicoes secundarias que tinhamos na bd para o jogador a editar
-            cursor.execute("""
-            DELETE 
-            FROM posicoes_sec
-            WHERE id_jogador = ?
-            """,(jogador_editar,))
-
-
-            #adicionar as posicoes secundarias novas
-            for l in novas_pos_final:
-                cursor.execute("""
-                INSERT INTO posicoes_sec(id_jogador,posicao_sec)
-                VALUES(?,?)
-                """, (jogador_editar,l))
-
-            bd_lanheses.commit()
             #retiramos daqui o return pois com a nossa decisao de colocar a edicao do mesmo jogador em loop ate o user digitar 0, entao substituimos esse return por um continue, que passa diretamente para a proxima iteracao do loop e ignora o select da tabela jogadores
             #return # temos que colocar o return dentro do elif para ele nao seguir o fluxo na funcao e se deparar com a pesquisa SELECT ... FROM jogadores
             continue
@@ -501,7 +548,7 @@ def editar_jogador():
             print("Nacionalidades atuais:")
             #printar as nacionalidades atuais do jogador
             for num,nac in enumerate(nomes_nacionalidades, start=1):
-                print(num, nac)
+                print(num,".", nac)
 
             #mostrar as opcoes ao user
             print("\n")
@@ -509,14 +556,18 @@ def editar_jogador():
             print("\n")
             print("Opções:")
             for num,opc in enumerate(lista_nacionalidades,start=1):
-                print(num,opc)
+                print(num,".",opc)
 
             while True:
                 entrada_valida = True
                 try:
                     print("\n")
-                    novas_nac_texto = input("Novas nacionalidades: ")
+                    novas_nac_texto = input("Novas nacionalidades (0 para cancelar): ")
                     print("\n")
+
+                    if novas_nac_texto == "0":
+                        break
+                    
                     if novas_nac_texto == "":
                         novas_nac = []
                     else:
@@ -540,25 +591,11 @@ def editar_jogador():
                     if entrada_valida:
                         for i in novas_nac_int:
                             novas_nac_final.append(lista_nacionalidades[i-1])
+
+                        alteracoes["nacionalidades"] = novas_nac_final
                         break
                 except ValueError:
                     print("Escolha números válidos")
-            #eliminar as nacionalidades antigas
-            cursor.execute("""
-            DELETE
-            FROM nacionalidades
-            WHERE id_jogador = ?
-            """, (jogador_editar,))
-
-            #adicionar novas nacionalidades
-            for nac in novas_nac_final:
-                cursor.execute("""
-                INSERT INTO nacionalidades(id_jogador,nacionalidade)
-                VALUES(?,?)
-                """,(jogador_editar,nac))
-
-            #salvar as alteracoes
-            bd_lanheses.commit()
 
             #retiramos o return para nao sair do loop e substituimos por um continue para ignorar o select da tabela jogadores
             #return
@@ -577,97 +614,324 @@ def editar_jogador():
 
         # === PEDIR NOVOS ATRIBUTOS ===
         if atrib_escolhido == 1:
-            atrib_novo = input("Novo nome: ")
-
+            atrib_novo = input("Novo nome (0 para cancelar): ")
+            if atrib_novo == "0":
+                continue # faz voltar para o menu dos atributos
+            alteracoes["nome"] = atrib_novo
+            continue #depois de o user ter colocado o novo nome, voltamos para o menu de atributos
+        
         elif atrib_escolhido == 2:
             while True:
                 try:
-                    atrib_novo = int(input("Novo número: "))
-
+                    atrib_novo = int(input("Novo número (0 para cancelar): "))
+                    if atrib_novo == 0:
+                        break #aqui, como temos um while True, temos que usar break para sair dele e depois o continue fora do while True vai nos levar para o menu dos atributos
                     if atrib_novo not in range(1,100):
                         print("Escolha um número de 1 a 99")
                     else:
+                        alteracoes["numero"] = atrib_novo
                         break
                 except ValueError:
                     print("Escolha um número válido")
+            continue
 
         elif atrib_escolhido == 3:
             for num, posicao in enumerate(lista_pos, start=1):
-                print(num, posicao)
+                print(num,".", posicao)
             while True:
                 try:
-                    pos_esc = int(input("Nova posição: "))
+                    pos_esc = int(input("Nova posição (0 para cancelar): "))
+                    if pos_esc == 0:
+                        break
                     if pos_esc not in range(1,len(lista_pos)+1):
                         print("Escolha uma opção válida")
                     else:
                         atrib_novo = lista_pos[pos_esc-1]
+                        alteracoes["pos_princ"] = atrib_novo
                         break
                 except ValueError:
                     print("Escolha uma posição válida")
+            continue
 
         elif atrib_escolhido == 4:
             while True:
                 try:
-                    atrib_novo = input("Nova data de nascimento (DD/MM/AAAA): ")
+                    atrib_novo = input("Nova data de nascimento (DD/MM/AAAA) ou 0 para cancelar: ")
+                    if atrib_novo == "0":
+                        break
                     atrib_novo = datetime.strptime(atrib_novo, "%d/%m/%Y")
+                    alteracoes["data_nascimento"] = atrib_novo
                     break
                 except ValueError:
                     print("Escolha uma data válida")
+            continue
 
         elif atrib_escolhido == 5:
             for num, pe in enumerate(lista_pes,start=1):
-                print(num,pe)
+                print(num,".",pe)
             while True:
                 try:
-                    pe_novo = int(input("Novo pé dominante: "))
+                    pe_novo = int(input("Novo pé dominante (0 para cancelar): "))
+                    if pe_novo == 0:
+                        break
                     if pe_novo not in range(1,len(lista_pes)+1):
                         print("Escolha uma opção válida")
                     else:
                         atrib_novo = lista_pes[pe_novo-1]
+                        alteracoes["pe_dom"] = atrib_novo
                         break
                 except ValueError:
                     print("Escolha um número válido")
-        
-        cursor.execute(f"""
-        UPDATE jogadores SET {coluna} = ?
-        WHERE id = ?
-        """, (atrib_novo,jogador_editar))
+            continue
 
-        bd_lanheses.commit()
+
+def ver_epocas(pausa = True):
+    cursor.execute("""
+    SELECT id, nome 
+    FROM epocas
+    ORDER BY nome ASC
+    """)
+    epcs = cursor.fetchall()
+
+    if pausa:
+        print("=== Épocas ===")
+        
+    print(f"{'ID':<4}{'Nome':<10}")
+    print(13*"-")
+    for epc in epcs:
+        print(f"{epc[0]:<4}{epc[1]:<10}")
+
+    if pausa:
+        input("\nPrima ENTER para voltar ao menu")
+
+def adicionar_epoca():
+    #verificamos se existe a epoca que o user tenta adicionar e guardamos o resultado em epoca_existente
+    while True:
+
+        epoca_valida = True
+        nova_epoca = input("Nova época (YYYY/YYYY) ou 0 para cancelar: ")
+        nova_epoca = nova_epoca.strip() #retira todos os espaços em branco para o caso de o user ter inserido apenas espaços
+
+        if nova_epoca == 0: 
+            break
+
+        if len(nova_epoca) != 9:
+            epoca_valida = False
+
+        elif nova_epoca[4] != "/":
+            epoca_valida = False
+
+        else:
+            for i in range(0,4):
+                if not nova_epoca[i].isdigit():
+                    epoca_valida = False
+
+                    
+            for j in range(5,9):
+                if not nova_epoca[j].isdigit():
+                    epoca_valida = False
+        
+            
+
+
+        if epoca_valida == False:
+            print("Formato inválido! Use YYYY/YYYY")
+            continue
+
+        anos = nova_epoca.split("/") #ficamos com ["2026", "2027"]
+        ano_inicio = int(anos[0])
+        ano_fim = int(anos[1])
+        if ano_fim != ano_inicio +1:
+            print("Época inválida! A época deve ter um intervalo de 1 ano.")
+            continue
+        
+        cursor.execute("""
+        SELECT nome
+        FROM epocas
+        WHERE nome = ?
+        """,(nova_epoca,))
+        epoca_existente = cursor.fetchone()
+        if epoca_existente is None:
+                
+                cursor.execute("""
+                INSERT INTO epocas(nome)
+                VALUES (?)
+                """,(nova_epoca,))
+                bd_lanheses.commit()
+                print(f"Época {nova_epoca} adicionada com sucesso! \n")
+                epoca_valida = True
+                break
+
+        else:
+            print("Época já existente, adicione outra época")
+            epoca_valida = False
+
+
+def remover_epoca():
+    print("=== Remover Época ===")
+    ver_epocas(pausa=False)
     
+    while True:
+        try:
+            cursor.execute("""
+            SELECT id FROM epocas
+            """)
+
+            ids = cursor.fetchall()
+            ids = [id[0] for id in ids]
+            opc = int(input("\nEscolha o id da época a remover(0 para cancelar): "))
+            if opc == 0:
+                return
+
+
+            elif opc not in ids:
+                print("Escolha uma opção válida")
+
+                
+            else:
+                cursor.execute("""
+                SELECT nome
+                FROM epocas
+                WHERE id = ?
+                """, (opc,))
+
+                epoca = cursor.fetchone()
+                print(f"Época selecionada: {epoca[0]}")
+
+                while True:
+                    res =input("Tem a certeza que quer remover esta época? (s/n): ").lower() #usamos o lower para aceitar tambem S
+                    if res == "s":
+                        cursor.execute("""
+                        DELETE
+                        FROM epocas
+                        WHERE id = ?
+                        """,(opc,))
+                        bd_lanheses.commit()
+                        print("Época removida!")
+                        return
+                    elif res == "n":
+                        return
+                    else:
+                        print("Escolha uma resposta válida(s/n)")
+                        continue
+
+        except ValueError:
+            print("Escolha um número válido")
+
+
+
+def gerir_epocas():
+    while True:
+        print("=== Gerir épocas === ")
+        opcoes_epocas = """
+1. Ver épocas
+2. Adicionar época
+3. Remover época
+0. Voltar
+        """
+        print(opcoes_epocas)
+        selecionado = int(input("Escolha uma opção: "))
+        if selecionado == 1:
+            ver_epocas()
+        elif selecionado == 2:
+            adicionar_epoca()
+        elif selecionado == 3:
+            remover_epoca()
+        elif selecionado == 0:
+            break #sai do while True, a funcao termina e vai para onde a funcao foi chamada
+        else:
+            print("Opção inválida!")
+
+
+def selecionar_epoca():
+    while True:
+        try:
+            print("\n=== Selecionar época ===")
+
+            ver_epocas(pausa = False)
+
+            id_epoca = int(input("\nSelecione a época pelo ID(0 para sair): "))
+
+            cursor.execute("""
+            SELECT id
+            FROM epocas
+            """)
+
+            ids = cursor.fetchall()
+            ids = [id[0] for id in ids]
+
+            if id_epoca == 0:
+                return 0
+
+            if id_epoca not in ids:
+                print("Escolha uma opção válida")
+            else:
+                cursor.execute("""
+                SELECT nome
+                FROM epocas
+                WHERE id = ?
+                """,(id_epoca,))
+                nome_epoca = cursor.fetchone()
+                print(f"Época {nome_epoca[0]} selecionada")
+                return id_epoca
+        
+        except ValueError:
+            print("Escolha um número válido")
+
+
 
 
 
 #===============================================================================================================================================================================================================================================
+def main():
 
+    epoca_atual = selecionar_epoca()
+    if epoca_atual == 0:
+        return
 
-#o while true vai controlar o programa inteiro, para podermos voltar ao menu depois de executar uma operação
+    #o while true vai controlar o programa inteiro, para podermos voltar ao menu depois de executar uma operação
+    while True:
+        print("=== Lanheses DB ===")
+        cursor.execute("""
+        SELECT nome
+        FROM epocas
+        WHERE id = ?
+        """,(epoca_atual,))
+        nome_epoca_atual = cursor.fetchone()
 
-while True:
-    print(opcoes)
-    while True: #faz repetir até achar um break, fazemos isso pq assim nao precisamos de uma condicao no while
-        try:
-            opcao_escolhida = int(input("Escolha uma opção: ")) #input guarda um str e nao um int, entao transformamos manualmente
-            if opcao_escolhida not in [1,2,3,4,5]:
-                print("Escolha uma opção válida")
-            else: 
-                break #sai do while quando o input é uma opcao válida (1,2,3,4)       
-        except ValueError:
-            print("Escolha um número válido")
+        print(f"|Época {nome_epoca_atual[0]}|")
 
-    if opcao_escolhida == 1:
-        ver_jogadores()
+        print(opcoes)
+        while True: #faz repetir até achar um break, fazemos isso pq assim nao precisamos de uma condicao no while
+            try:
+                opcao_escolhida = int(input("Escolha uma opção: ")) #input guarda um str e nao um int, entao transformamos manualmente
+                if opcao_escolhida not in [1,2,3,4,5,6,7]:
+                    print("Escolha uma opção válida")
+                else: 
+                    break #sai do while quando o input é uma opcao válida (1,2,3,4)       
+            except ValueError:
+                print("Escolha um número válido")
 
-    elif opcao_escolhida == 2:
-        adicionar_jogador()
+        if opcao_escolhida == 1:
+            ver_jogadores()
 
-    elif opcao_escolhida == 3:
-        remover_jogador()
+        elif opcao_escolhida == 2:
+            adicionar_jogador()
 
-    elif opcao_escolhida == 4:
-        editar_jogador()
+        elif opcao_escolhida == 3:
+            remover_jogador()
+
+        elif opcao_escolhida == 4:
+            editar_jogador()
+
+        elif opcao_escolhida == 5:
+            gerir_epocas()
+
+        elif opcao_escolhida == 6:
+            epoca_atual = selecionar_epoca()
         
-    elif opcao_escolhida == 5:
-        print("Até logo!")
-        break
+        elif opcao_escolhida == 7:
+            print("Até logo!")
+            break
 
+main()
